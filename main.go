@@ -14,6 +14,7 @@ var (
 	LISTEN_IP         string = ""
 	LISTEN_PORT       int    = 8000
 	CRAWL4AI_ENDPOINT        = "http://crawl4ai:11235/crawl"
+	CRAWL4AI_AUTH_TOKEN        = ""
 )
 
 func ReadEnvironment() {
@@ -31,6 +32,11 @@ func ReadEnvironment() {
 	endpoint := os.Getenv("CRAWL4AI_ENDPOINT")
 	if endpoint != "" {
 		CRAWL4AI_ENDPOINT = endpoint
+	}
+
+	token := os.Getenv("CRAWL4AI_AUTH_TOKEN")
+	if token != "" {
+		CRAWL4AI_AUTH_TOKEN = token
 	}
 }
 
@@ -112,12 +118,29 @@ func CrawlEndpoint(response http.ResponseWriter, request *http.Request) {
 		panic(err)
 	}
 
+	if CRAWL4AI_AUTH_TOKEN != "" {
+		req.Header.Set("Authorization", "Bearer "+CRAWL4AI_AUTH_TOKEN)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
 	crawlResponse, err := http.DefaultClient.Do(req)
 	if err != nil || crawlResponse.StatusCode != 200 {
-		response.WriteHeader(502)
-		resp := ErrorResponse{ErrorName: "bad gateway"}
+		body := ""
+		if crawlResponse != nil && crawlResponse.Body != nil {
+			buf := make([]byte, 4096)
+			n, _ := crawlResponse.Body.Read(buf)
+			if n > 0 {
+				body = string(buf[:n])
+			}
+		}
+		statusCode := 502
+		if crawlResponse != nil {
+			statusCode = crawlResponse.StatusCode
+		}
+		response.WriteHeader(statusCode)
+		resp := ErrorResponse{ErrorName: "bad gateway", Detail: fmt.Sprintf("crawl4ai returned %d: %s", statusCode, body)}
 		response.Write(jsonEncodeInfallible(resp))
-		log.Printf("502 bad gateway :: %s\n", request.RemoteAddr)
+		log.Printf("502 bad gateway :: %s :: crawl4ai returned %d :: %s\n", request.RemoteAddr, statusCode, body)
 		return
 	}
 
