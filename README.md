@@ -1,17 +1,29 @@
 # crawl4ai OpenWebUI proxy
-This simple proxy server can be run in a docker container to let an [OpenWebUI](https://github.com/open-webui/open-webui) instance interact with a [crawl4ai](https://github.com/unclecode/crawl4ai) instance.
-This makes the OpenWebUI's web search feature a lot faster and way more usable without paying for an API service. 🎉
+
+A simple proxy server that enables [OpenWebUI](https://github.com/open-webui/open-webui)'s web page fetching feature (fetch_url) to work with [crawl4ai](https://github.com/unclecode/crawl4ai). This makes crawling faster and avoids paying for a cloud API service. 🎉
+
+## Features
+
+- **Auth forwarding**: Forwards `CRAWL4AI_AUTH_TOKEN` as a Bearer token to crawl4ai (required for v0.9.0+)
+- **Content-Type forwarding**: Ensures `application/json` is sent to the upstream crawl4ai server
+- **OpenWebUI format**: Transforms crawl4ai's response into the format OpenWebUI expects
 
 ## Usage
-Given a `compose.yml` file that looks something like this:
 
-```
+> **Security note**: This proxy forwards credentials to crawl4ai but does not add its own authentication layer. Do not expose it publicly without a TLS-terminating reverse proxy or other access controls.
+
+### Docker Compose
+
+Build and run with a similar `docker-compose.yml` as below:
+
+```yaml
 services:
     crawl4ai-proxy:
-        image: ghcr.io/lennyerik/crawl4ai-proxy:latest
+        build: .
         environment:
             - LISTEN_PORT=8000
             - CRAWL4AI_ENDPOINT=http://crawl4ai:11235/crawl
+            - CRAWL4AI_AUTH_TOKEN=your_secret_token  # Must match crawl4ai's API token
         networks:
             - openwebui
 
@@ -30,8 +42,10 @@ services:
             - openwebui
 
     crawl4ai:
-        image: unclecode/crawl4ai:0.6.0-r2
+        image: unclecode/crawl4ai:latest
         shm_size: 1g
+        environment:
+            - CRAWL4AI_API_TOKEN=your_secret_token
         networks:
             - openwebui
 
@@ -39,8 +53,25 @@ networks:
     - openwebui
 ```
 
-Run `docker compose up -d`, visit `localhost:8080` in a browser, navigate to `Admin Panel->Web Search` and under the "Loader" section, set
+Then run:
 
-    Web Loader Engine: external
-    External Web Loader URL: http://crawl4ai-proxy:8000/crawl
-    External Web Loader API Key: * (doesn't matter, but is a required field)
+```bash
+docker compose up -d --build
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `LISTEN_PORT` | `8000` | Port the proxy listens on |
+| `LISTEN_IP` | `""` (all interfaces) | Interface to bind to |
+| `CRAWL4AI_ENDPOINT` | `http://crawl4ai:11235/crawl` | URL of the crawl4ai server |
+| `CRAWL4AI_AUTH_TOKEN` | `""` | Bearer token forwarded to crawl4ai (required for v0.9.0+) |
+
+### OpenWebUI Configuration
+
+After starting, visit your OpenWebUI instance and navigate to **Admin Panel → Web Search**. Under the "Loader" section, set:
+
+- Web Loader Engine: `external`
+- External Web Loader URL: `http://<your-host>:8000/crawl`
+- External Web Loader API Key: `*` (required field but value doesn't matter)
